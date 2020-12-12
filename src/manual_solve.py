@@ -64,7 +64,7 @@ def identifyAndCrop(x):
     #Crop the template to the dimensions of the non-xero rows and columns calculated in the list comprehensions above.
     
     out = template[row_crop[0]:row_crop[-1]+1,col_crop[0]:col_crop[-1]+1]
-    return out
+    return template
 
 def template_flip(T):
     #Flip the template in advance of the convolution.
@@ -133,7 +133,8 @@ def solve_63613498(x):
     #start_row = L[0] - np.shape(template)[0]
     #start_col = L[1] - np.shape(template)[1]
     #x[start_row:start_row+template_zone_size[0],start_col:start_col+template_zone_size[1]] = 10
-    x[L[0],L[1]] = 10
+    y = np.copy(x)
+    y[L[0]-1:L[0]+2,L[1]-1:L[1]+2] = np.multiply(binary[L[0]-1:L[0]+2,L[1]-1:L[1]+2],colour)
     #Plot result.
     print("binary: ", binary)
     print("Template: ", template)
