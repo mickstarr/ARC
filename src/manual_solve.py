@@ -12,6 +12,7 @@ from scipy import misc
 from scipy import ndimage
     
 import matplotlib.pyplot as plt
+from collections import defaultdict 
 
 # ascent = misc.ascent()
 # scharr = np.array([[ -3-3j, 0-10j,  +3 -3j],
@@ -111,14 +112,38 @@ def findCorners(x, class_value):
         print("Corners shape: ", np.shape(DB[n]["corners"]))
         print(DB[n]["corners"])
     
-    #Correcly offset corners based on their template. 
-    #Eg a bottom-right corner gets picked up at an offset of [+2,+2] because...
+    #Use Lambda function to reformat corners so they are in [R1,C1], [R2,C2] etc format, rather than "[R1, R2,... RN], [C1, C2,... CN]" format.
+    for idx, n in enumerate(DB):
+        #Manipulate the format of corners to be in [r,c] pairs.
+        f = lambda row,arr: [arr[0][row],arr[1][row]]
+        reformatted_corners = [f(element,DB[n]["corners"]) for element in range(np.shape(DB[n]["corners"])[0])]
+        DB[n]["corners"] = reformatted_corners
+
+    #Correctly offset corners based on their template. 
+    #Eg a bottom-right corner gets picked up at an offset of [+1,+1] because...
     #... the correlation reports results for the template, without taking...
-    #... into account where the corner is within that template.
-    # for idx, n in enumerate(DB):
-    #     if n == "TL":
-    #         [corrected_c for n in len(DB[n]["corners"])
-    
+    #... into account where the corner is within that template.        
+    for idx, n in enumerate(DB):
+        if n == "TL":
+            f = lambda rc_coord: [rc_coord[0]-1, rc_coord[1]-1]
+            corrected_corners = [f(coords) for coords in DB[n]["corners"]]
+            DB[n]["corners"] = corrected_corners    
+        if n == "TR":
+            f = lambda rc_coord: [rc_coord[0]-1, rc_coord[1]+1]
+            corrected_corners = [f(coords) for coords in DB[n]["corners"]]
+            DB[n]["corners"] = corrected_corners    
+        if n == "BL":
+            f = lambda rc_coord: [rc_coord[0]+1, rc_coord[1]-1]
+            corrected_corners = [f(coords) for coords in DB[n]["corners"]]
+            DB[n]["corners"] = corrected_corners    
+        if n == "BR":
+            f = lambda rc_coord: [rc_coord[0]+1, rc_coord[1]+1]
+            corrected_corners = [f(coords) for coords in DB[n]["corners"]]
+            DB[n]["corners"] = corrected_corners
+        print(n, ": ", DB[n]["corners"])
+        
+        
+     
     fig, tile = plt.subplots(2, 2)
     fig.suptitle(f"Corner Scores Detected for Class: {class_value}")
     #Set vmax so we see only the perfect matches as the brightest cells.
@@ -131,6 +156,10 @@ def findCorners(x, class_value):
     tile[1,1].imshow(BR, cmap='gray', vmax = np.sum(DB["BR"]["template"]))
     tile[1,1].set_title('Bottom Right')
     fig.show()
+    
+    return DB
+
+
     
 #################################################################
 ###                                                           ###
@@ -152,13 +181,16 @@ def solve_fcb5c309(x):
     #2. The enclosing rectangles are all the same colour, and have only 4 sides. (ie they must be rectangles! Not just any polygon. )
     #3. The enclosing rectangles will not overlap.
     
-    print(f"x is: ")
+    print("x is: ")
     print(x)
     #Make a histogram of all the tile values so we can start identifying how many different classes there are in the grid.
     #could use a dict like we used in lectures, but this is one line of code! :D
     hist = ndimage.measurements.histogram(x, 0, np.max(x), np.max(x)+1)
     #Zero-out the background in the histogram, because we don't want to analyse the background.
     hist[0] = 0
+    #Create a list to gather all the data relating to each colour type (aka class) in the original image.
+    global class_data
+    class_data = dict()
     #Segment out each class, so we can analyse each colour of cell independently. 
     for idx, n in enumerate(hist):
         #If the frequency of occurrence of that class is zero, skip it.  Only process colours that exist in the original image. 
@@ -166,9 +198,32 @@ def solve_fcb5c309(x):
             #binarising and only propagating one specific cell value / class at a time.
             B = np.array(x == idx).astype(int)
             print(f"Finding values = {idx}")
-            print(B)
-            findCorners(B, idx)
+            class_data[idx] = findCorners(B, idx)
             
+    #Determine which class has the most corners.
+    global corner_count
+    corner_count = defaultdict(int)
+    #Define which class has the most corners:
+    global most_corners
+    global most_corners_class_id
+    most_corners = 0
+    most_corners_class_id = 0
+    for n in class_data:
+        for corner_type in ["TL", "TR", "BL", "BR"]:
+            print(n, " : ", class_data[n][corner_type]["corners"])
+            print("#corners: ", len(class_data[n][corner_type]["corners"]))
+            print(len(class_data[n][corner_type]["corners"]))
+            print(n)
+            corner_count[n] += len(class_data[n][corner_type]["corners"])
+            if corner_count[n] > most_corners:
+                most_corners = corner_count[n]
+                most_corners_class_id = n
+
+    #Now we have the class containing the most corners stored in "most_corners" with class id "most_corners_class_id".
+    #Now lets find each of the four corners of each rectangle until they are all found.
+    #class_data[most_corners_class_id]
+    
+
     
     #B = binarised(x)
     
