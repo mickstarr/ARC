@@ -14,23 +14,15 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 from collections import defaultdict 
 
-# ascent = misc.ascent()
-# scharr = np.array([[ -3-3j, 0-10j,  +3 -3j],
-#                    [-10+0j, 0+ 0j, +10 +0j],
-#                    [ -3+3j, 0+10j,  +3 +3j]]) # Gx + j*Gy
-# grad = signal.convolve2d(ascent, scharr, boundary='symm', mode='same')
 
-# fig, (ax_orig, ax_mag, ax_ang) = plt.subplots(3, 1, figsize=(6, 15))
-# ax_orig.imshow(ascent, cmap='gray')
-# ax_orig.set_title('Original')
-# ax_orig.set_axis_off()
-# ax_mag.imshow(np.absolute(grad), cmap='gray')
-# ax_mag.set_title('Gradient magnitude')
-# ax_mag.set_axis_off()
-# ax_ang.imshow(np.angle(grad), cmap='hsv') # hsv is cyclic, like angles
-# ax_ang.set_title('Gradient orientation')
-# ax_ang.set_axis_off()
-# fig.show()
+### YOUR CODE HERE: write at least three functions which solve
+### specific tasks by transforming the input x and returning the
+### result. Name them according to the task ID as in the three
+### examples below. Delete the three examples. The tasks you choose
+### must be in the data/training directory, not data/evaluation.
+
+
+
 
 
 #################################################################
@@ -50,11 +42,11 @@ def identifyAndCrop(x):
     template = x[:template_zone_size[0]-1,:template_zone_size[1]-1]
     #Check if we can crop the template to make the convolution better, both in computation and in how close it can get to the window edges.
     #sum columns and rows independently to see if any are empty (meaning we could discard that row or column from our template)
-    col_sum = template.sum(axis=0)
-    row_sum = template.sum(axis=1)
+    #col_sum = template.sum(axis=0)
+    #row_sum = template.sum(axis=1)
     #Get the bounds of our template (it may be smaller than the 3x3 grid size), by finding the columns and rows that sum to non-zero totals.
-    col_crop = [idx for idx, n in enumerate(col_sum) if n!=0]
-    row_crop = [idx for idx, n in enumerate(row_sum) if n!=0]
+    #col_crop = [idx for idx, n in enumerate(col_sum) if n!=0]
+    #row_crop = [idx for idx, n in enumerate(row_sum) if n!=0]
     #print(row_sum)
     #print("Row_crop = ", row_crop)
     #print(col_sum)
@@ -65,11 +57,12 @@ def identifyAndCrop(x):
     #print(col_crop[0])
     #print(col_crop[-1])
     #Crop the template to the dimensions of the non-xero rows and columns calculated in the list comprehensions above.
+    #out = template[row_crop[0]:row_crop[-1]+1,col_crop[0]:col_crop[-1]+1]
     
-    out = template[row_crop[0]:row_crop[-1]+1,col_crop[0]:col_crop[-1]+1]
     return template
 
 def template_flip(T):
+    #For convolution before I remembered correlation! :D
     #Flip the template in advance of the convolution.
     out = np.copy(T)
     #Flip about each axis.
@@ -164,11 +157,16 @@ def findCorners(x, class_value):
     return DB
 
 def findNextCorner(current_state, current_corner, DB):
+    #Should be part of the state machine I keep talking about! :P
+    #If current state is the top-left corner, look for the next corner in a clockwise direction... ie the top-right corner.
     if current_state == "TL":
         candidate = current_corner
+        #Given current state "top-left" we wish to move to state "top-right"
+        #Before we do that though, we need to find the coordinate of the top-right corner we wish to move to.
         while candidate not in DB["TR"]["corners"]:
             candidate = [candidate[0], candidate[1]+1]
         #Now we have found the next corner in the TL, TR, BL, BR sequence, so we return this as the next valid corner.
+        #Outside this function, we are (conceptually at least) moving to the next state in our (conceptual, due to time pressure) FSM. 
         return candidate
     
     if current_state == "TR":
@@ -186,19 +184,66 @@ def findNextCorner(current_state, current_corner, DB):
         return candidate
     
     
+def getBestReplacement(r,c,y):
+    #Build a dataset of the pixel positions that should be the same colour as this [r,c] pixel.
+    #Take the most common colour (the mode of our histogram of "non-corrupted" pixels) and replace the value of [r,c] with that.
+    #Be careful to not use any yellow pixels, as they are the corrupted ones we wish to replace.
+    
+    #Data stores the coordinates of the pixels that should be similar to the current one we are evaluating.
+    #These are deterministic due to the mirroring of the pattern about the x and y axes.
+    data = []
+    #Delta stores the offset between the center of the image and the current pixel under evaluation.
+    delta = [0,0]
+    
+    #For each quadrant in the image, calculate the delta between the center of the image and the pixel under evaluation.
+    #We will use this delta later to the pixels whose pixel valuesshould be equal. Then we can spot the most likely value and replace corrupted pixels with that value. 
+    if (r <= 7) & (c <= 7):
+        #Top-Left
+        delta = np.abs(np.array([7,7]) - np.array([r,c]))        
+    elif (r <= 7) & (c > 7):
+        #Top-Right
+        delta = np.abs(np.array([7,8]) - np.array([r,c]))
+    elif (r > 7) & (c <= 7):
+        #Bottom-Left
+        delta = np.abs(np.array([8,7]) - np.array([r,c]))
+    elif (r > 7) & (c > 7):
+        #Bottom-Right
+        delta = np.abs(np.array([8,8]) - np.array([r,c]))
+
+    #For the given input coordinate [r,c], calculate the actual coordinate of its mirrored pixels in the image.           
+    TL =  np.array([7,7]) + np.multiply(delta,[-1,-1])
+    TR =  np.array([7,8]) + np.multiply(delta,[-1,+1])
+    BL =  np.array([8,7]) + np.multiply(delta,[+1,-1])
+    BR =  np.array([8,8]) + np.multiply(delta,[+1,+1])
+    
+    #Gather these pixels coordinates, which we will then use to build a histogram of the pixel values at these coordinates.
+    data.append(TL)
+    data.append(TR)
+    data.append(BL)
+    data.append(BR)
+    
+    #For each pixel coordinate gather so far, build a dataset of these pixel values.
+    #Ignore any pixel values == 4, as 4 is the corrupted colour.
+    colours = []
+    for n in data:
+        #Yellows are always = 4. They are the incorrect pixels, so we ignore themm when calculating statistics.
+        if y[n[0],n[1]] != 4 :
+            #Gather the pixel values (that don't have value 4) into a list.
+            colours.append(y[n[0], n[1]])
+    
+    #Generate a histogram of these pixel values, and take the mode of this histogram.  This is the "most probable" value for our current pixel.
+    hist = ndimage.measurements.histogram(colours, 0, np.max(colours), np.max(colours)+1)
+    out = np.argmax(hist)
+    
+    return out
+            
+        
 #################################################################
 ###                                                           ###
 ###                 End Of Custom Functions                   ###
 ###                                                           ###
 #################################################################
 
-
-
-### YOUR CODE HERE: write at least three functions which solve
-### specific tasks by transforming the input x and returning the
-### result. Name them according to the task ID as in the three
-### examples below. Delete the three examples. The tasks you choose
-### must be in the data/training directory, not data/evaluation.
 
 def solve_fcb5c309(x):
     #Assumptions: 
@@ -308,83 +353,116 @@ def solve_fcb5c309(x):
     y = np.multiply(y,internal_val[best_rectangle_id])
     
     
-
-    fig, (ax_orig, ax_result) = plt.subplots(1, 2, figsize=(15,6))
-    fig.suptitle("Original (L) vs Result (R)")
-    ax_orig.imshow(x, cmap='hsv')
-    ax_orig.set_title('Original')
-    ax_orig.set_axis_off()
-    ax_result.imshow(y, cmap='hsv')
-    ax_result.set_title('Result')
-    ax_result.set_axis_off()
-    fig.show()
+    ##Debug plots
+    # fig, (ax_orig, ax_result) = plt.subplots(1, 2, figsize=(15,6))
+    # fig.suptitle("Original (L) vs Result (R)")
+    # ax_orig.imshow(x, cmap='hsv')
+    # ax_orig.set_title('Original')
+    # ax_orig.set_axis_off()
+    # ax_result.imshow(y, cmap='hsv')
+    # ax_result.set_title('Result')
+    # ax_result.set_axis_off()
+    # fig.show()
     
     return y
 
-# def solve_63613498(x):
-#     #Assumptions: 
-#     #1. Background is always zero.
-#     #   Could use a histogram to identify the most common cell number (which would give 0 as a background)
-#     #   A problem with using a histogram is that the background may not necessarily be the most common cell value. 
-#     #   Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
-#     #
-#     #2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
-#     #3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" result encountered.
-#     #4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always rectangular.
-#     #
+def solve_63613498(x):
+    #Assumptions: 
+    #1. Background is always zero.
+    #   Could use a histogram to identify the most common cell number (which would give 0 as a background)
+    #   A problem with using a histogram is that the background may not necessarily be the most common cell value. 
+    #   Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
+    #
+    #2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
+    #3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" shape encountered.
+    #4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always 3x3.
+
     
-#     #Making global for debugging
-#     #global y
-#     #Define the template we're looking for.
-#     global template_zone_size 
-#     template_zone_size = (4,4)
+    #Making global for debugging
+    #global y
+    #Define the template we're looking for.
+    global template_zone_size 
+    template_zone_size = (4,4)
     
-#     #As colour is not the same between template and the shape we're looking for, we will binarise the image so we can use convolution later to identify the best match to our template. 
-#     binary = binarised(x)
+    #As colour is not the same between template and the shape we're looking for, we will binarise the image so we can use convolution later to identify the best match to our template. 
+    binary = binarised(x)
     
-#     template = identifyAndCrop(binary)
+    #Won't bother cropping out background pixels from the template anymore, as it just caused some confusion.
+    #As a result, this function just extract the template ratyher than also reduce it to its minimum size. 
+    #eg  an L shape would only occupy 2 colummns, so we could crop out one column. Anyway, I implemented it and then it wasn't really needed, so I commented it out. 
+    template = identifyAndCrop(binary)
     
-#     #Pre-flip the template in advance of the convolution.
-#     #template_flipped = template_flip(template)
-#     template_flipped = np.copy(template)
+    #I think a small bug came in when I switched from using convolution to correlation for the template matching.
+    #Not sure what the problem was here, but had to make a copy for the pipeline to work.  Didn't have time to investigate it fully.
+    template_copy = np.copy(template)
     
-#     #"Zero-out" the template and boundary in the original image so our convolution doesnt run on it and generate a match from itself.
-#     binary[0:template_zone_size[0],0:template_zone_size[1]] = np.zeros(template_zone_size)
-#     #Convolve the template over the image to create a heatmap of the best matches.
-#     #y = signal.convolve2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
-#     y = signal.correlate2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
-    
-    
-#     #Find the image location with the max value from the convolution.
-#     L = np.unravel_index(np.argmax(y),np.shape(y))
+    #"Zero-out" the template and boundary in the original image so our correlation doesnt run on it and generate a match from itself.
+    binary[0:template_zone_size[0],0:template_zone_size[1]] = np.zeros(template_zone_size)
+    #Convolve the template over the image to create a heatmap of the best matches.
+    #y = signal.convolve2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
+    y = signal.correlate2d(binary, template_copy, boundary='symm', fillvalue=0, mode='same')
     
     
-#     #Identify the colour / number value to assign to the pixels that make up the best match.
-#     #These always match the boundary of the 3x3 grid at the top left of the image.
-#     colour = x[template_zone_size[0]-1,template_zone_size[1]-1]
-#     #print("Colour is: ",colour)
-#     #Replace the match in the original image with our template (including an updated colour to match the boundary).
-#     #start_row = L[0] - np.shape(template)[0]
-#     #start_col = L[1] - np.shape(template)[1]
-#     #x[start_row:start_row+template_zone_size[0],start_col:start_col+template_zone_size[1]] = 10
-#     y = np.copy(x)
-#     y[L[0]-1:L[0]+2,L[1]-1:L[1]+2] = np.multiply(binary[L[0]-1:L[0]+2,L[1]-1:L[1]+2],colour)
-#     #Plot result.
-#     #print("binary: ", binary)
-#     #print("Template: ", template)
-#     #print("Template flipped: ", template_flipped)
-#     #print("y: ", y)
-#     #print("Location: ", L)
-#     #print("Template shape: ", np.shape(template))
-#     fig, (ax_orig, ax_result) = plt.subplots(2, 1, figsize=(6, 15))
-#     ax_orig.imshow(x, cmap='hsv')
-#     ax_orig.set_title('Original')
-#     ax_orig.set_axis_off()
-#     ax_result.imshow(y, cmap='gray')
-#     ax_result.set_title('Result')
-#     ax_result.set_axis_off()
-#     fig.show()
-#     return y
+    #Find the image location with the max value from the convolution.
+    L = np.unravel_index(np.argmax(y),np.shape(y))
+    
+    
+    #Identify the colour / number value to assign to the pixels that make up the best match.
+    #These always match the boundary of the 3x3 grid at the top left of the image.
+    colour = x[template_zone_size[0]-1,template_zone_size[1]-1]
+    #print("Colour is: ",colour)
+    #Replace the match in the original image with our template (including an updated colour to match the boundary).
+    #start_row = L[0] - np.shape(template)[0]
+    #start_col = L[1] - np.shape(template)[1]
+    #x[start_row:start_row+template_zone_size[0],start_col:start_col+template_zone_size[1]] = 10
+    y = np.copy(x)
+    y[L[0]-1:L[0]+2,L[1]-1:L[1]+2] = np.multiply(binary[L[0]-1:L[0]+2,L[1]-1:L[1]+2],colour)
+    
+    #Plot result.
+    #print("binary: ", binary)
+    #print("Template: ", template)
+    #print("Template flipped: ", template_flipped)
+    #print("y: ", y)
+    #print("Location: ", L)
+    #print("Template shape: ", np.shape(template))
+    
+    ##Debug prints
+    # fig, (ax_orig, ax_result) = plt.subplots(2, 1, figsize=(6, 15))
+    # ax_orig.imshow(x, cmap='hsv')
+    # ax_orig.set_title('Original')
+    # ax_orig.set_axis_off()
+    # ax_result.imshow(y, cmap='gray')
+    # ax_result.set_title('Result')
+    # ax_result.set_axis_off()
+    # fig.show()
+    return y
+
+def solve_b8825c91(x):
+    #Make a copy of x, so we can overwrite the corrupted values as we identify the correct values for a given pixel.    
+    y = np.copy(x)
+    
+    #Determine the shape of the iomage so we can get an idea (even by eye) who to handle coordinate offsets from the center of the image. 
+    s = np.shape(x)
+    
+    #Iterate through each pixel in the image, and identify a good value for that pixel.
+    #Due to some pixels being corrupted, some pixels will need to be edited.
+    for r in range(s[0]):
+        for c in range(s[1]):
+            #Identify the best replacement pixel value for the current one, and replace it.
+            y[r,c] = getBestReplacement(r,c,y)
+
+    # #Some debug images.
+    # fig, (ax_orig, ax_result) = plt.subplots(1, 2, figsize=(15,6))
+    # fig.suptitle("Original (L) vs Result (R)")
+    # ax_orig.imshow(x, cmap='hsv')
+    # ax_orig.set_title('Original')
+    # ax_orig.set_axis_off()
+    # ax_result.imshow(y, cmap='hsv')
+    # ax_result.set_title('Result')
+    # ax_result.set_axis_off()
+    # fig.show()
+    
+    return y
 
 
 def main():
