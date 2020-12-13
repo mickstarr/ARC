@@ -9,6 +9,8 @@ import re
 
 from scipy import signal
 from scipy import misc
+from scipy import ndimage
+    
 import matplotlib.pyplot as plt
 
 # ascent = misc.ascent()
@@ -52,15 +54,15 @@ def identifyAndCrop(x):
     #Get the bounds of our template (it may be smaller than the 3x3 grid size), by finding the columns and rows that sum to non-zero totals.
     col_crop = [idx for idx, n in enumerate(col_sum) if n!=0]
     row_crop = [idx for idx, n in enumerate(row_sum) if n!=0]
-    print(row_sum)
-    print("Row_crop = ", row_crop)
-    print(col_sum)
-    print("Col_crop = ", col_crop)
+    #print(row_sum)
+    #print("Row_crop = ", row_crop)
+    #print(col_sum)
+    #print("Col_crop = ", col_crop)
     #Crop the template to the size determined by the first and last non-zero totals in columns and rows.
-    print(row_crop[0])
-    print(row_crop[-1])
-    print(col_crop[0])
-    print(col_crop[-1])
+    #print(row_crop[0])
+    #print(row_crop[-1])
+    #print(col_crop[0])
+    #print(col_crop[-1])
     #Crop the template to the dimensions of the non-xero rows and columns calculated in the list comprehensions above.
     
     out = template[row_crop[0]:row_crop[-1]+1,col_crop[0]:col_crop[-1]+1]
@@ -73,7 +75,63 @@ def template_flip(T):
     out = np.flip(out, 0)
     out = np.flip(out, 1)
     return out
-        
+
+def findCorners(x, class_value):
+    #Top right (TR), Top left (TL), Bottom right (BR), and Bottom left (BL) corner templates that we'll look for.
+    TR_template = np.array([[1,1,1],[0,0,1],[0,0,1]])
+    TL_template = np.array([[1,1,1],[1,0,0],[1,0,0]])
+    BR_template = np.array([[0,0,1],[0,0,1],[1,1,1]])
+    BL_template = np.array([[1,0,0],[1,0,0],[1,1,1]])
+    TR = signal.correlate2d(x, TR_template, boundary='fill', fillvalue=0, mode='same')
+    TL = signal.correlate2d(x, TL_template, boundary='fill', fillvalue=0, mode='same')
+    BR = signal.correlate2d(x, BR_template, boundary='fill', fillvalue=0, mode='same')
+    BL = signal.correlate2d(x, BL_template, boundary='fill', fillvalue=0, mode='same')
+    
+    #Threshold each image so we only see the perfect matches for the template used.
+    #Set the "ideal" score that we should get from a correlation of a template with it's match.
+    
+    
+    #Make a dict database to hold the various corner-type templates and resulting corner heatmaps (results of correlations) etc.
+    DB = dict()
+    DB["TL"] = {"template": TL_template, "heatmap": TL}
+    DB["TR"] = {"template": TR_template, "heatmap": TR}
+    DB["BL"] = {"template": BL_template, "heatmap": BL}
+    DB["BR"] = {"template": BR_template, "heatmap": BR}
+    
+    #For each corner type we're looking for:
+    for idx, n in enumerate(DB):
+        print(n, ":")
+        T = DB[n]["template"]
+        #Identify where the correlation peaks were, indicating corners.  Disregard any arrays that did not get an exact match as a corner.
+        DB[n]["corners"] = [c for idx, c in enumerate(np.where(DB[n]["heatmap"] == np.sum(T))) if len(c) > 0]
+        ########################Reformat corners into a list of [R,C] lists, rather than independent lists for R and C separately.
+        print(f"Max score: {np.sum(T)}")
+        print(DB[n]["heatmap"])
+        print("Corners found: ", len(DB[n]["corners"]))
+        print("Corners shape: ", np.shape(DB[n]["corners"]))
+        print(DB[n]["corners"])
+    
+    #Correcly offset corners based on their template. 
+    #Eg a bottom-right corner gets picked up at an offset of [+2,+2] because...
+    #... the correlation reports results for the template, without taking...
+    #... into account where the corner is within that template.
+    # for idx, n in enumerate(DB):
+    #     if n == "TL":
+    #         [corrected_c for n in len(DB[n]["corners"])
+    
+    fig, tile = plt.subplots(2, 2)
+    fig.suptitle(f"Corner Scores Detected for Class: {class_value}")
+    #Set vmax so we see only the perfect matches as the brightest cells.
+    tile[0,0].imshow(TL, cmap='gray', vmax = np.sum(DB["TL"]["template"]))
+    tile[0,0].set_title('Top Left')
+    tile[0,1].imshow(TR, cmap='gray', vmax = np.sum(DB["TR"]["template"]))
+    tile[0,1].set_title('Top Right')
+    tile[1,0].imshow(BL, cmap='gray', vmax = np.sum(DB["BL"]["template"]))
+    tile[1,0].set_title('Bottom Left')
+    tile[1,1].imshow(BR, cmap='gray', vmax = np.sum(DB["BR"]["template"]))
+    tile[1,1].set_title('Bottom Right')
+    fig.show()
+    
 #################################################################
 ###                                                           ###
 ###                 End Of Custom Functions                   ###
@@ -87,71 +145,118 @@ def template_flip(T):
 ### result. Name them according to the task ID as in the three
 ### examples below. Delete the three examples. The tasks you choose
 ### must be in the data/training directory, not data/evaluation.
-def solve_63613498(x):
+
+def solve_fcb5c309(x):
     #Assumptions: 
-    #1. Background is always zero.
-    #   Could use a histogram to identify the most common cell number (which would give 0 as a background)
-    #   A problem with using a histogram is that the background may not necessarily be the most common cell value. 
-    #   Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
-    #
-    #2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
-    #3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" result encountered.
-    #4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always rectangular.
-    #
+    #1. The background is the most frequent colour in the grid.
+    #2. The enclosing rectangles are all the same colour, and have only 4 sides. (ie they must be rectangles! Not just any polygon. )
+    #3. The enclosing rectangles will not overlap.
     
-    #Making global for debugging
-    #global y
-    #Define the template we're looking for.
-    global template_zone_size 
-    template_zone_size = (4,4)
+    print(f"x is: ")
+    print(x)
+    #Make a histogram of all the tile values so we can start identifying how many different classes there are in the grid.
+    #could use a dict like we used in lectures, but this is one line of code! :D
+    hist = ndimage.measurements.histogram(x, 0, np.max(x), np.max(x)+1)
+    #Zero-out the background in the histogram, because we don't want to analyse the background.
+    hist[0] = 0
+    #Segment out each class, so we can analyse each colour of cell independently. 
+    for idx, n in enumerate(hist):
+        #If the frequency of occurrence of that class is zero, skip it.  Only process colours that exist in the original image. 
+        if n !=0:
+            #binarising and only propagating one specific cell value / class at a time.
+            B = np.array(x == idx).astype(int)
+            print(f"Finding values = {idx}")
+            print(B)
+            findCorners(B, idx)
+            
     
-    #As colour is not the same between template and the shape we're looking for, we will binarise the image so we can use convolution later to identify the best match to our template. 
-    binary = binarised(x)
+    #B = binarised(x)
     
-    template = identifyAndCrop(binary)
+    #Segment out each class and check how rectangular they are.
+    #Use correlation to find each of the 4 right angles in a rectangle. Then use an FSM to extract each rectangle.
+    #findCorners(B)
     
-    #Pre-flip the template in advance of the convolution.
-    #template_flipped = template_flip(template)
-    template_flipped = np.copy(template)
-    
-    #"Zero-out" the template and boundary in the original image so our convolution doesnt run on it and generate a match from itself.
-    binary[0:template_zone_size[0],0:template_zone_size[1]] = np.zeros(template_zone_size)
-    #Convolve the template over the image to create a heatmap of the best matches.
-    #y = signal.convolve2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
-    y = signal.correlate2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
-    
-    
-    #Find the image location with the max value from the convolution.
-    L = np.unravel_index(np.argmax(y),np.shape(y))
+    #y = binarised(x)
     
     
-    #Identify the colour / number value to assign to the pixels that make up the best match.
-    #These always match the boundary of the 3x3 grid at the top left of the image.
-    colour = x[template_zone_size[0]-1,template_zone_size[1]-1]
-    print("Colour is: ",colour)
-    #Replace the match in the original image with our template (including an updated colour to match the boundary).
-    #start_row = L[0] - np.shape(template)[0]
-    #start_col = L[1] - np.shape(template)[1]
-    #x[start_row:start_row+template_zone_size[0],start_col:start_col+template_zone_size[1]] = 10
-    y = np.copy(x)
-    y[L[0]-1:L[0]+2,L[1]-1:L[1]+2] = np.multiply(binary[L[0]-1:L[0]+2,L[1]-1:L[1]+2],colour)
-    #Plot result.
-    print("binary: ", binary)
-    print("Template: ", template)
-    print("Template flipped: ", template_flipped)
-    print("y: ", y)
-    print("Location: ", L)
-    print("Template shape: ", np.shape(template))
-    fig, (ax_orig, ax_result) = plt.subplots(2, 1, figsize=(6, 15))
-    ax_orig.imshow(x, cmap='hsv')
+    #print(x)
+
+    fig, (ax_orig, ax_result) = plt.subplots(1, 2, figsize=(15,6))
+    fig.suptitle("Original (L) vs Result (R)")
+    ax_orig.imshow(x, cmap='gray')
     ax_orig.set_title('Original')
     ax_orig.set_axis_off()
     ax_result.imshow(y, cmap='gray')
     ax_result.set_title('Result')
     ax_result.set_axis_off()
     fig.show()
-    return y
+    
+    return x
 
+# def solve_63613498(x):
+#     #Assumptions: 
+#     #1. Background is always zero.
+#     #   Could use a histogram to identify the most common cell number (which would give 0 as a background)
+#     #   A problem with using a histogram is that the background may not necessarily be the most common cell value. 
+#     #   Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
+#     #
+#     #2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
+#     #3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" result encountered.
+#     #4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always rectangular.
+#     #
+    
+#     #Making global for debugging
+#     #global y
+#     #Define the template we're looking for.
+#     global template_zone_size 
+#     template_zone_size = (4,4)
+    
+#     #As colour is not the same between template and the shape we're looking for, we will binarise the image so we can use convolution later to identify the best match to our template. 
+#     binary = binarised(x)
+    
+#     template = identifyAndCrop(binary)
+    
+#     #Pre-flip the template in advance of the convolution.
+#     #template_flipped = template_flip(template)
+#     template_flipped = np.copy(template)
+    
+#     #"Zero-out" the template and boundary in the original image so our convolution doesnt run on it and generate a match from itself.
+#     binary[0:template_zone_size[0],0:template_zone_size[1]] = np.zeros(template_zone_size)
+#     #Convolve the template over the image to create a heatmap of the best matches.
+#     #y = signal.convolve2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
+#     y = signal.correlate2d(binary, template_flipped, boundary='symm', fillvalue=0, mode='same')
+    
+    
+#     #Find the image location with the max value from the convolution.
+#     L = np.unravel_index(np.argmax(y),np.shape(y))
+    
+    
+#     #Identify the colour / number value to assign to the pixels that make up the best match.
+#     #These always match the boundary of the 3x3 grid at the top left of the image.
+#     colour = x[template_zone_size[0]-1,template_zone_size[1]-1]
+#     #print("Colour is: ",colour)
+#     #Replace the match in the original image with our template (including an updated colour to match the boundary).
+#     #start_row = L[0] - np.shape(template)[0]
+#     #start_col = L[1] - np.shape(template)[1]
+#     #x[start_row:start_row+template_zone_size[0],start_col:start_col+template_zone_size[1]] = 10
+#     y = np.copy(x)
+#     y[L[0]-1:L[0]+2,L[1]-1:L[1]+2] = np.multiply(binary[L[0]-1:L[0]+2,L[1]-1:L[1]+2],colour)
+#     #Plot result.
+#     #print("binary: ", binary)
+#     #print("Template: ", template)
+#     #print("Template flipped: ", template_flipped)
+#     #print("y: ", y)
+#     #print("Location: ", L)
+#     #print("Template shape: ", np.shape(template))
+#     fig, (ax_orig, ax_result) = plt.subplots(2, 1, figsize=(6, 15))
+#     ax_orig.imshow(x, cmap='hsv')
+#     ax_orig.set_title('Original')
+#     ax_orig.set_axis_off()
+#     ax_result.imshow(y, cmap='gray')
+#     ax_result.set_title('Result')
+#     ax_result.set_axis_off()
+#     fig.show()
+#     return y
 
 
 def main():
@@ -173,15 +278,18 @@ def main():
 
     for ID, solve_fn in tasks_solvers:
         # for each task, read the data and call test()
+        json_filename = ""
         try:
             directory = os.path.join("..", "data", "training")
             json_filename = os.path.join(directory, ID + ".json")
+            data = read_ARC_JSON(json_filename)
         except:
-            print("Failed to open pre-set path. Using Mikes full path.")
-            json_filename = "C:\Repos\prog_and_tools_for_ai\PTAI_Assignment_3\ARC\data\training"
-            os.chdir(json_filename)
+            print("Failed to open pre-set path. Using Mikes full path as a fall-back.")
+            directory = "C:\\Repos\\prog_and_tools_for_ai\\PTAI_Assignment_3\\ARC\\data\\training"
+            os.chdir(directory)
             json_filename = os.path.join(directory, ID + ".json")
-        data = read_ARC_JSON(json_filename)
+            print(json_filename)
+            data = read_ARC_JSON(json_filename)
         test(ID, solve_fn, data)
     
 def read_ARC_JSON(filepath):
