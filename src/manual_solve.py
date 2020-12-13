@@ -484,18 +484,9 @@ def main():
 
     for ID, solve_fn in tasks_solvers:
         # for each task, read the data and call test()
-        json_filename = ""
-        try:
-            directory = os.path.join("..", "data", "training")
-            json_filename = os.path.join(directory, ID + ".json")
-            data = read_ARC_JSON(json_filename)
-        except:
-            print("Failed to open pre-set path. Using Mikes full path as a fall-back.")
-            directory = "C:\\Repos\\prog_and_tools_for_ai\\PTAI_Assignment_3\\ARC\\data\\training"
-            os.chdir(directory)
-            json_filename = os.path.join(directory, ID + ".json")
-            print(json_filename)
-            data = read_ARC_JSON(json_filename)
+        directory = os.path.join("..", "data", "training")
+        json_filename = os.path.join(directory, ID + ".json")
+        data = read_ARC_JSON(json_filename)
         test(ID, solve_fn, data)
     
 def read_ARC_JSON(filepath):
