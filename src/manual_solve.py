@@ -1,11 +1,35 @@
 #!/usr/bin/python
 
+#################################################################
+#################################################################
+
+""" 
+Name: Michael Starr
+Student Number: 20236596
+Mikes Github Repo: https://github.com/mickstarr/ARC
+
+Summary / Reflection:
+    
+Histograms were handy for a number of tasks. Useful for gathering statistics about the data and isolating particular
+ colours and features (eg background, or if all pixels of a certain colour needed to be replaced.)
+
+Use of binary images occurred in more than one task. It was handy to use the "A = np.array(B > 0).astype(int)" approach for this.
+Binary images were handy for correlation of patterns that had a different colour to the template being used. 
+I could reduce them to binary and then do simple pattern matching using correlation.
+
+I used convolution initially to do template matching, eg for detecting pixel groups that make right-angles. 
+I later pivoted (more sensibly) to using correlation for this. It saved me having to do the template flip at the start of the convolution.
+
+"""
+
+#################################################################
+#################################################################
+
+
 import os, sys
 import json
 import numpy as np
 import re
-
-
 
 from scipy import signal
 from scipy import misc
@@ -20,9 +44,6 @@ from collections import defaultdict
 ### result. Name them according to the task ID as in the three
 ### examples below. Delete the three examples. The tasks you choose
 ### must be in the data/training directory, not data/evaluation.
-
-
-
 
 
 #################################################################
@@ -246,10 +267,19 @@ def getBestReplacement(r,c,y):
 
 
 def solve_fcb5c309(x):
-    #Assumptions: 
-    #1. The background is the most frequent colour in the grid.
-    #2. The enclosing rectangles are all the same colour, and have only 4 sides. (ie they must be rectangles! Not just any polygon. )
-    #3. The enclosing rectangles will not overlap.
+    """
+    Task Description:
+        Isolate the rectangles. Identify the rectangle that has the most coloured tiles inside it.
+        Crop out and return this rectangle and the tiles inside it, but with all non-background tiles now coloured the
+        same colour as the internal tiles in the original image.
+    
+    Assumptions: 
+        1. The background is the most frequent colour in the grid.
+        2. The enclosing rectangles are all the same colour, and have only 4 sides. (ie they must be rectangles! Not just any polygon. )
+        3. The enclosing rectangles will not overlap.
+    
+    """
+    
     global y
     
     #Make a histogram of all the tile values so we can start identifying how many different classes there are in the grid.
@@ -367,15 +397,25 @@ def solve_fcb5c309(x):
     return y
 
 def solve_63613498(x):
-    #Assumptions: 
-    #1. Background is always zero.
-    #   Could use a histogram to identify the most common cell number (which would give 0 as a background)
-    #   A problem with using a histogram is that the background may not necessarily be the most common cell value. 
-    #   Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
-    #
-    #2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
-    #3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" shape encountered.
-    #4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always 3x3.
+"""
+    Task Description:
+        Given a 3x3 pattern template (surrounded by a grey border) in the top left corner of the image, find that shape in the image.
+        The template colour and its match in the image will have different colours, so the pattern match must be colour agnostic. I binarised the image to get over this.
+        When you've located the pattern in the image, you then have to colour it grey (the colour of the boundary in the top left) in order to complete the task.
+        
+    
+    Assumptions: 
+    1. Background is always zero.
+       Could use a histogram to identify the most common cell number (which would give 0 as a background)
+       A problem with using a histogram is that the background may not necessarily be the most common cell value. 
+       Also, we have not been told that background can change from test to test. Hence why I'm making the "background = 0" assumption.  
+    
+    2. The square at the top of the tile is fixed in position and size (ie 3x3) for all problems.
+    3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" shape encountered.
+    4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always 3x3.
+    
+"""
+
 
     
     #Making global for debugging
@@ -388,7 +428,7 @@ def solve_63613498(x):
     binary = binarised(x)
     
     #Won't bother cropping out background pixels from the template anymore, as it just caused some confusion.
-    #As a result, this function just extract the template ratyher than also reduce it to its minimum size. 
+    #As a result, this function just extracts the template rather than also reducing it to its minimum size. 
     #eg  an L shape would only occupy 2 colummns, so we could crop out one column. Anyway, I implemented it and then it wasn't really needed, so I commented it out. 
     template = identifyAndCrop(binary)
     
@@ -438,6 +478,16 @@ def solve_63613498(x):
     return y
 
 def solve_b8825c91(x):
+    """
+    Task Description:
+        
+        Given an image whereby the same pattern is repeated in each quadrant, identify the errors and replace / fix the corrupted pixels.
+        As the pattern is repeated across the 4 quadrants, you are basically required to do anomaly detection and fix the anomalies. 
+    
+    Assumptions: 
+        1. The corrpupted pixels are always yellow. 
+    
+"""
     #Make a copy of x, so we can overwrite the corrupted values as we identify the correct values for a given pixel.    
     y = np.copy(x)
     
