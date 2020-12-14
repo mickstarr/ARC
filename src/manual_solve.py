@@ -397,7 +397,7 @@ def solve_fcb5c309(x):
     return y
 
 def solve_63613498(x):
-"""
+    """
     Task Description:
         Given a 3x3 pattern template (surrounded by a grey border) in the top left corner of the image, find that shape in the image.
         The template colour and its match in the image will have different colours, so the pattern match must be colour agnostic. I binarised the image to get over this.
@@ -414,7 +414,7 @@ def solve_63613498(x):
     3. There is only one match. If there are multiple equivalent results, we just ignore all but the first "best" shape encountered.
     4. Template shapes can be assumed to occupy the full area inside the bounds on each axis. ie templates are always 3x3.
     
-"""
+    """
 
 
     
