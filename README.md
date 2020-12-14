@@ -8,6 +8,8 @@ A complete description of the dataset, its goals, and its underlying logic, can 
 
 As a reminder, a test-taker is said to solve a task when, upon seeing the task for the first time, they are able to produce the correct output grid for *all* test inputs in the task (this includes picking the dimensions of the output grid). For each test input, the test-taker is allowed 3 trials (this holds for all test-takers, either humans or AI).
 
+## Modifications to the repo for the MSc in AI course:
+In this forked repo, code has been added to attempt to pass 3 of the tests in the ARC training dataset (those tests are currently passing and the code can be found in [the source file here](https://github.com/mickstarr/ARC/blob/master/src/manual_solve.py)).  This was not done to test any AI, but rather to test our own problem solving skills, as well as practice some skills learned in our python tools course as part of the MSc in AI.  Manually writing solutions is one way to familiarise ourselves with the tasks that an AI may be expected to solve.  This will hopefully give us an intuition about how to approach more advanced AI based solutions in the future.
 
 ## Task file format
 
